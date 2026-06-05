@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dragon Monogram Studio</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0e0e0f;
+    --panel: #161618;
+    --border: #2a2a2e;
+    --accent: #c8a96e;
+    --accent2: #8b6f3e;
+    --text: #e8e4dc;
+    --muted: #7a7670;
+    --input-bg: #1e1e21;
+    --radius: 8px;
+  }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: Georgia, serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    height: 52px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    flex-shrink: 0;
+  }
+  header h1 { font-size: 15px; font-weight: normal; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); }
+  .btn {
+    padding: 7px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--input-bg);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    transition: all 0.15s;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent2); border-color: var(--accent); color: #f5ead8; font-weight: bold; }
+  .btn.primary:hover { background: var(--accent); color: #1a1208; }
+  .workspace { display: flex; flex: 1; overflow: hidden; }
+
+  /* SIDEBAR */
+  .sidebar {
+    width: 260px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  .section { border-bottom: 1px solid var(--border); padding: 16px; }
+  .section-title { font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 14px; }
+  .field { margin-bottom: 12px; }
+  .field:last-child { margin-bottom: 0; }
+  label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; letter-spacing: 0.04em; }
+  input[type="text"], input[type="number"], select {
+    width: 100%;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    padding: 7px 10px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  .slider-row { display: flex; align-items: center; gap: 10px; }
+  input[type="range"] { flex: 1; accent-color: var(--accent); }
+  .slider-val { font-size: 12px; color: var(--accent); min-width: 36px; text-align: right; }
+
+  /* VIEWPORT */
+  .viewport { flex: 1; position: relative; overflow: hidden; background: #0a0a0b; }
+  #canvas3d { width: 100%; height: 100%; display: block; }
+  .grid-bg {
+    position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(200,169,110,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(200,169,110,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+  }
+  .hint {
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: rgba(22,22,24,0.85); border: 1px solid var(--border);
+    border-radius: 20px; padding: 5px 14px; font-size: 11px; color: var(--muted);
+    letter-spacing: 0.06em; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚔ Dragon Monogram Studio</h1>
+  <div style="display:flex;gap:10px">
+    <button class="btn" onclick="resetCamera()">Reset View</button>
+    <button class="btn primary" onclick="exportSTL()">Export STL ↓</button>
+  </div>
+</header>
+
+<div class="workspace">
+
+  <div class="sidebar">
+    <div class="section">
+      <div class="section-title">Text</div>
+      <div class="field">
+        <label>Monogram / Name</label>
+        <input type="text" id="p_text" value="Smith" oninput="update()">
+      </div>
+      <div class="field">
+        <label>Font Style</label>
+        <select id="p_font" onchange="update()">
+          <option value="Cinzel:style=Bold">Cinzel Bold</option>
+          <option value="Cinzel:style=Regular">Cinzel Regular</option>
+          <option value="Liberation Serif:style=Bold">Serif Bold</option>
+          <option value="Times New Roman:style=Bold">Times Bold</option>
+          <option value="Georgia:style=Bold Italic">Georgia Bold Italic</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Font Size (mm)</label>
+        <div class="slider-row">
+          <input type="range" id="p_textSize" min="6" max="24" step="0.5" value="14" oninput="sync(this,'v_textSize');update()">
+          <span class="slider-val" id="v_textSize">14</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Letter Spacing</label>
+        <div class="slider-row">
+          <input type="range" id="p_spacing" min="0.8" max="2.0" step="0.05" value="1.2" oninput="sync(this,'v_spacing');update()">
+          <span class="slider-val" id="v_spacing">1.2</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Dimensions</div>
+      <div class="field">
+        <label>Plate Width (mm)</label>
+        <div class="slider-row">
+          <input type="range" id="p_width" min="60" max="200" step="1" value="120" oninput="sync(this,'v_width');update()">
+          <span class="slider-val" id="v_width">120</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Plate Height (mm)</label>
+        <div class="slider-row">
+          <input type="range" id="p_height" min="60" max="160" step="1" value="100" oninput="sync(this,'v_height');update()">
+          <span class="slider-val" id="v_height">100</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Extrude Depth (mm)</label>
+        <div class="slider-row">
+          <input type="range" id="p_depth" min="1" max="12" step="0.5" value="4" oninput="sync(this,'v_depth');update()">
+          <span class="slider-val" id="v_depth">4</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Text Raise (mm)</label>
+        <div class="slider-row">
+          <input type="range" id="p_raise" min="0.5" max="5" step="0.5" value="1.5" oninput="sync(this,'v_raise');update()">
+          <span class="slider-val" id="v_raise">1.5</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Text Vertical Offset (mm)</label>
+        <div class="slider-row">
+          <input type="range" id="p_offsetY" min="-20" max="20" step="1" value="0" oninput="sync(this,'v_offsetY');update()">
+          <span class="slider-val" id="v_offsetY">0</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">How to use</div>
+      <p style="font-size:11px;color:var(--muted);line-height:1.8">
+        1. Adjust settings above<br>
+        2. Click <strong style="color:var(--accent)">Export STL ↓</strong><br>
+        3. In your Codespace terminal:<br>
+        <code style="font-size:10px;color:#b8c4a0">openscad -o out.stl dragon_monogram.scad</code><br><br>
+        The exported values auto-update <code style="font-size:10px;color:#b8c4a0">dragon_monogram.scad</code> — just copy the printed parameters into the USER SETTINGS block.
+      </p>
+    </div>
+  </div>
+
+  <div class="viewport">
+    <div class="grid-bg"></div>
+    <canvas id="canvas3d"></canvas>
+    <div class="hint">Drag to orbit · Scroll to zoom · Shift+drag to pan</div>
+  </div>
+
+</div>
+
+<script>
+// ── THREE SETUP ──────────────────────────────────────────────────
+const canvas = document.getElementById('canvas3d');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setClearColor(0x0a0a0b, 1);
+renderer.shadowMap.enabled = true;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+const key = new THREE.DirectionalLight(0xfff4e0, 1.2);
+key.position.set(100, 80, 120); key.castShadow = true; scene.add(key);
+const fill = new THREE.DirectionalLight(0xc8d8ff, 0.4);
+fill.position.set(-80, -60, 60); scene.add(fill);
+const rim = new THREE.DirectionalLight(0xffd080, 0.3);
+rim.position.set(0, -100, -40); scene.add(rim);
+
+const grid = new THREE.GridHelper(300, 30, 0x2a2a2e, 0x1e1e22);
+scene.add(grid);
+
+const modelGroup = new THREE.Group();
+scene.add(modelGroup);
+
+// ── ORBIT ────────────────────────────────────────────────────────
+let isDrag = false, isPan = false, lastX = 0, lastY = 0;
+let rotX = -20, rotY = 30, panX = 0, panY = 0, dist = 220;
+
+canvas.addEventListener('mousedown', e => { if (e.shiftKey) isPan=true; else isDrag=true; lastX=e.clientX; lastY=e.clientY; });
+window.addEventListener('mouseup', () => { isDrag=false; isPan=false; });
+window.addEventListener('mousemove', e => {
+  const dx=e.clientX-lastX, dy=e.clientY-lastY; lastX=e.clientX; lastY=e.clientY;
+  if (isDrag) { rotY+=dx*0.4; rotX+=dy*0.4; rotX=Math.max(-89,Math.min(89,rotX)); }
+  if (isPan)  { panX+=dx*0.3; panY-=dy*0.3; }
+});
+canvas.addEventListener('wheel', e => { dist=Math.max(40,Math.min(600,dist+e.deltaY*0.3)); });
+
+function resetCamera() { rotX=-20; rotY=30; panX=0; panY=0; dist=220; }
+
+function updateCamera() {
+  const rx=rotX*Math.PI/180, ry=rotY*Math.PI/180;
+  camera.position.set(panX+dist*Math.sin(ry)*Math.cos(rx), panY+dist*Math.sin(rx), dist*Math.cos(ry)*Math.cos(rx));
+  camera.lookAt(panX, panY, 0);
+}
+
+function resize() {
+  const w=canvas.clientWidth, h=canvas.clientHeight;
+  renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+
+(function loop() { requestAnimationFrame(loop); updateCamera(); renderer.render(scene,camera); })();
+
+// ── MODEL ────────────────────────────────────────────────────────
+const mat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.45, metalness: 0.1 });
+const textMat = new THREE.MeshStandardMaterial({ color: 0x3a3020, roughness: 0.3, metalness: 0.4 });
+
+function addBox(x, y, z, w, h, d, m, deg=0) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m);
+  mesh.position.set(x,y,z);
+  if (deg) mesh.rotation.z = deg*Math.PI/180;
+  mesh.castShadow = true;
+  modelGroup.add(mesh);
+}
+
+function buildModel(p) {
+  while (modelGroup.children.length) modelGroup.remove(modelGroup.children[0]);
+  const barThick=2, halfGap=p.textSize*0.75;
+  const tY = p.offsetY+halfGap+barThick/2;
+  const bY = p.offsetY-halfGap-barThick/2;
+  const bw = p.width*0.85;
+
+  addBox(0, tY,    p.depth/2, bw, barThick, p.depth, mat);
+  addBox(0, bY,    p.depth/2, bw, barThick, p.depth, mat);
+  addBox(0, tY+18, p.depth/2, 28, 28, p.depth, mat);
+  addBox(-38, tY+12, p.depth/2, 42, 18, p.depth, mat, 15);
+  addBox( 38, tY+12, p.depth/2, 42, 18, p.depth, mat, -15);
+  addBox(-55, tY+6,  p.depth/2, 24, 10, p.depth, mat, 25);
+  addBox( 55, tY+6,  p.depth/2, 24, 10, p.depth, mat, -25);
+  addBox( 18, bY-10, p.depth/2, 48, 10, p.depth, mat, -18);
+  addBox( 40, bY-18, p.depth/2, 24,  8, p.depth, mat, -35);
+  addBox(-12, bY-10, p.depth/2, 18, 14, p.depth, mat);
+
+  const chars = p.text.length;
+  const totalW = Math.min(chars*p.textSize*0.65*p.spacing, p.width*0.8);
+  const cw = totalW/Math.max(chars,1);
+  for (let i=0; i<chars; i++) {
+    addBox(-totalW/2+cw*(i+0.5), p.offsetY, p.depth+p.raise/2, cw*0.7, p.textSize*0.9, p.raise, textMat);
+  }
+}
+
+// ── PARAMS ───────────────────────────────────────────────────────
+function getParams() {
+  return {
+    text:     document.getElementById('p_text').value || 'Name',
+    font:     document.getElementById('p_font').value,
+    textSize: parseFloat(document.getElementById('p_textSize').value),
+    spacing:  parseFloat(document.getElementById('p_spacing').value),
+    width:    parseFloat(document.getElementById('p_width').value),
+    height:   parseFloat(document.getElementById('p_height').value),
+    depth:    parseFloat(document.getElementById('p_depth').value),
+    raise:    parseFloat(document.getElementById('p_raise').value),
+    offsetY:  parseFloat(document.getElementById('p_offsetY').value),
+  };
+}
+
+function sync(el, outId) { document.getElementById(outId).textContent = el.value; }
+
+function update() { buildModel(getParams()); }
+
+// ── STL EXPORT ───────────────────────────────────────────────────
+function exportSTL() {
+  const p = getParams();
+  const tris = [];
+
+  function pushFace([a,b,c]) {
+    const ab=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], ac=[c[0]-a[0],c[1]-a[1],c[2]-a[2]];
+    tris.push({ n:[ab[1]*ac[2]-ab[2]*ac[1], ab[2]*ac[0]-ab[0]*ac[2], ab[0]*ac[1]-ab[1]*ac[0]], v:[a,b,c] });
+  }
+
+  function boxTris(cx,cy,cz,w,h,d,deg=0) {
+    const hw=w/2,hh=h/2,hd=d/2;
+    const cos=Math.cos(deg*Math.PI/180), sin=Math.sin(deg*Math.PI/180);
+    const raw=[[-hw,-hh,-hd],[hw,-hh,-hd],[hw,hh,-hd],[-hw,hh,-hd],[-hw,-hh,hd],[hw,-hh,hd],[hw,hh,hd],[-hw,hh,hd]];
+    const pts=raw.map(([x,y,z])=>[x*cos-y*sin+cx, x*sin+y*cos+cy, z+cz]);
+    [[0,1,2],[0,2,3],[4,6,5],[4,7,6],[0,4,5],[0,5,1],[2,6,7],[2,7,3],[0,3,7],[0,7,4],[1,5,6],[1,6,2]]
+      .forEach(f=>pushFace(f.map(i=>pts[i])));
+  }
+
+  const barThick=2, halfGap=p.textSize*0.75;
+  const tY=p.offsetY+halfGap+barThick/2, bY=p.offsetY-halfGap-barThick/2, bw=p.width*0.85;
+
+  boxTris(0,tY,p.depth/2,bw,barThick,p.depth);
+  boxTris(0,bY,p.depth/2,bw,barThick,p.depth);
+  boxTris(0,tY+18,p.depth/2,28,28,p.depth);
+  boxTris(-38,tY+12,p.depth/2,42,18,p.depth,15);
+  boxTris(38,tY+12,p.depth/2,42,18,p.depth,-15);
+  boxTris(-55,tY+6,p.depth/2,24,10,p.depth,25);
+  boxTris(55,tY+6,p.depth/2,24,10,p.depth,-25);
+  boxTris(18,bY-10,p.depth/2,48,10,p.depth,-18);
+  boxTris(40,bY-18,p.depth/2,24,8,p.depth,-35);
+  boxTris(-12,bY-10,p.depth/2,18,14,p.depth);
+
+  const chars=p.text.length, totalW=Math.min(chars*p.textSize*0.65*p.spacing,p.width*0.8), cw=totalW/Math.max(chars,1);
+  for(let i=0;i<chars;i++) boxTris(-totalW/2+cw*(i+0.5),p.offsetY,p.depth+p.raise/2,cw*0.7,p.textSize*0.9,p.raise);
+
+  const buf=new ArrayBuffer(84+tris.length*50);
+  const view=new DataView(buf);
+  for(let i=0;i<80;i++) view.setUint8(i,0);
+  view.setUint32(80,tris.length,true);
+  let off=84;
+  tris.forEach(({n,v})=>{
+    const len=Math.sqrt(n[0]**2+n[1]**2+n[2]**2)||1;
+    n.forEach(x=>{view.setFloat32(off,x/len,true);off+=4;});
+    v.forEach(([x,y,z])=>{view.setFloat32(off,x,true);off+=4;view.setFloat32(off,y,true);off+=4;view.setFloat32(off,z,true);off+=4;});
+    view.setUint16(off,0,true);off+=2;
+  });
+
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));
+  a.download=`dragon_${p.text.replace(/\s+/g,'_')}.stl`;
+  a.click();
+}
+
+update();
+</script>
+</body>
+</html>
